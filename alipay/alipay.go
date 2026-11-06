@@ -17,7 +17,10 @@ type Config struct {
 	AlipayPublicKeyPEM string
 	SubjectType        goauth.SubjectType
 	FetchProfile       bool
-	HTTPClient         *http.Client
+	// HTTPClient supplies the client used for platform requests. A
+	// non-positive timeout falls back to 10s per request and the redirect
+	// policy is always replaced: the gateway must not follow redirects.
+	HTTPClient *http.Client
 }
 
 type Provider struct {

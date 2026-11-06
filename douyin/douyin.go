@@ -14,7 +14,10 @@ type Config struct {
 	ClientKey    string
 	ClientSecret string
 	FetchProfile bool
-	HTTPClient   *http.Client
+	// HTTPClient supplies the client used for platform requests. A
+	// non-positive timeout falls back to 10s per request and the redirect
+	// policy is always replaced: token endpoints must not follow redirects.
+	HTTPClient *http.Client
 }
 
 type Provider struct {
@@ -53,6 +56,11 @@ func (provider *Provider) Exchange(ctx context.Context, code string) (goauth.Use
 		"client_key": {provider.clientKey}, "client_secret": {provider.clientSecret},
 		"code": {code}, "grant_type": {"authorization_code"},
 	}, httpx.Capture(&response, &tokenResponse))
+	if response.Data != nil && response.Data.ErrorCode != nil {
+		if code := *response.Data.ErrorCode; code != 0 {
+			return goauth.User{}, rejected("exchange", int64(code))
+		}
+	}
 	if err != nil {
 		return goauth.User{}, err
 	}
@@ -60,9 +68,6 @@ func (provider *Provider) Exchange(ctx context.Context, code string) (goauth.Use
 		return goauth.User{}, httpx.Failure(goauth.Douyin, "exchange", goauth.ErrResponse)
 	}
 	token := response.Data
-	if *token.ErrorCode != 0 {
-		return goauth.User{}, rejected("exchange", int64(*token.ErrorCode))
-	}
 	if !httpx.Present(token.AccessToken, token.OpenID) || token.ExpiresIn <= 0 {
 		return goauth.User{}, httpx.Failure(goauth.Douyin, "exchange", goauth.ErrResponse)
 	}
@@ -99,22 +104,19 @@ func (provider *Provider) profile(ctx context.Context, accessToken string, user 
 	err := provider.http.PostJSON(ctx, "profile", "https://open.douyin.com/oauth/userinfo/", map[string]string{
 		"access_token": accessToken, "open_id": user.ID,
 	}, httpx.Capture(&response, &raw))
+	if response.ErrNo != nil && *response.ErrNo != 0 {
+		return rejected("profile", int64(*response.ErrNo))
+	}
+	if response.Data != nil && response.Data.ErrorCode != nil && *response.Data.ErrorCode != 0 {
+		return rejected("profile", int64(*response.Data.ErrorCode))
+	}
 	if err != nil {
 		return err
 	}
-	if response.ErrNo == nil {
-		return httpx.Failure(goauth.Douyin, "profile", goauth.ErrResponse)
-	}
-	if *response.ErrNo != 0 {
-		return rejected("profile", int64(*response.ErrNo))
-	}
-	if response.Data == nil {
+	if response.ErrNo == nil || response.Data == nil {
 		return httpx.Failure(goauth.Douyin, "profile", goauth.ErrResponse)
 	}
 	profile := response.Data
-	if profile.ErrorCode != nil && *profile.ErrorCode != 0 {
-		return rejected("profile", int64(*profile.ErrorCode))
-	}
 	if !httpx.Present(profile.OpenID, profile.ClientKey) {
 		return httpx.Failure(goauth.Douyin, "profile", goauth.ErrResponse)
 	}

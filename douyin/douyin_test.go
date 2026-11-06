@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/feymanlee/goauth"
@@ -64,6 +65,54 @@ func TestExchange(t *testing.T) {
 		identity.TokenResponse["access_token"] != "token" || identity.TokenResponse["refresh_token"] != "refresh" ||
 		identity.TokenResponse["scope"] != "user_info" || identity.TokenResponse["data"] != nil || identity.Raw["data"] != nil {
 		t.Fatalf("unexpected raw response layer: %+v", identity)
+	}
+}
+
+func TestHTTPErrorHandling(t *testing.T) {
+	for _, scenario := range []struct {
+		name    string
+		profile bool
+		badPath string
+		body    string
+		want    error
+	}{
+		{"token rejection", false, "/oauth/access_token/", `{"data":{"error_code":28001008}}`, goauth.ErrInvalidCredential},
+		{"success body on failed status", false, "/oauth/access_token/", validToken, goauth.ErrTransport},
+		{"malformed rejection", false, "/oauth/access_token/", `not JSON: secret`, goauth.ErrTransport},
+		{"profile rejection", true, "/oauth/userinfo/", `{"err_no":28001008}`, goauth.ErrInvalidCredential},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			calls := 0
+			client := testutil.Client(t, func(writer http.ResponseWriter, request *http.Request) {
+				calls++
+				if request.URL.Path == scenario.badPath {
+					writer.WriteHeader(http.StatusUnauthorized)
+					fmt.Fprint(writer, scenario.body)
+					return
+				}
+				switch request.URL.Path {
+				case "/oauth/access_token/":
+					fmt.Fprint(writer, validToken)
+				default:
+					fmt.Fprint(writer, `{"err_no":0,"data":{"error_code":0,"open_id":"person","client_key":"app"}}`)
+				}
+			})
+			provider, err := New(Config{ClientKey: "app", ClientSecret: "secret", FetchProfile: scenario.profile, HTTPClient: client})
+			if err != nil {
+				t.Fatal(err)
+			}
+			user, err := provider.Exchange(context.Background(), "code")
+			expected := 1
+			if scenario.profile {
+				expected = 2
+			}
+			if !errors.Is(err, scenario.want) || !reflect.DeepEqual(user, goauth.User{}) || calls != expected {
+				t.Fatalf("user=%+v error=%v calls=%d", user, err, calls)
+			}
+			if strings.Contains(err.Error(), "secret") {
+				t.Fatalf("error leaks response: %v", err)
+			}
+		})
 	}
 }
 

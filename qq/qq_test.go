@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/feymanlee/goauth"
@@ -54,6 +55,54 @@ func TestVerify(t *testing.T) {
 		identity.TokenResponse["access_token"] != "token" || len(identity.TokenResponse) != 1 ||
 		identity.Name != "" || identity.Email != "" {
 		t.Fatalf("incomplete user: %+v", identity)
+	}
+}
+
+func TestHTTPErrorHandling(t *testing.T) {
+	for _, scenario := range []struct {
+		name    string
+		profile bool
+		badPath string
+		body    string
+		want    error
+	}{
+		{"token rejection", false, "/oauth2.0/me", `{"error":100016,"error_description":"secret"}`, goauth.ErrInvalidCredential},
+		{"success body on failed status", false, "/oauth2.0/me", `{"client_id":"123","openid":"person"}`, goauth.ErrTransport},
+		{"malformed rejection", false, "/oauth2.0/me", `not JSON: secret`, goauth.ErrTransport},
+		{"profile rejection", true, "/user/get_user_info", `{"ret":100030}`, goauth.ErrProvider},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			calls := 0
+			client := testutil.Client(t, func(writer http.ResponseWriter, request *http.Request) {
+				calls++
+				if request.URL.Path == scenario.badPath {
+					writer.WriteHeader(http.StatusUnauthorized)
+					fmt.Fprint(writer, scenario.body)
+					return
+				}
+				switch request.URL.Path {
+				case "/oauth2.0/me":
+					fmt.Fprint(writer, `{"client_id":"123","openid":"person"}`)
+				default:
+					fmt.Fprint(writer, `{"ret":0,"nickname":"测试"}`)
+				}
+			})
+			provider, err := New(Config{AppID: "123", FetchProfile: scenario.profile, HTTPClient: client})
+			if err != nil {
+				t.Fatal(err)
+			}
+			user, err := provider.Verify(context.Background(), "token")
+			expected := 1
+			if scenario.profile {
+				expected = 2
+			}
+			if !errors.Is(err, scenario.want) || !reflect.DeepEqual(user, goauth.User{}) || calls != expected {
+				t.Fatalf("user=%+v error=%v calls=%d", user, err, calls)
+			}
+			if strings.Contains(err.Error(), "secret") {
+				t.Fatalf("error leaks response: %v", err)
+			}
+		})
 	}
 }
 

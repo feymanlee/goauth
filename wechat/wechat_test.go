@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/feymanlee/goauth"
@@ -54,6 +55,49 @@ func TestExchange(t *testing.T) {
 		identity.TokenResponse["access_token"] != "token" || identity.TokenResponse["refresh_token"] != "refresh" ||
 		identity.TokenResponse["scope"] != "snsapi_userinfo" || identity.Name != "" || identity.Email != "" {
 		t.Fatalf("incomplete user: %+v", identity)
+	}
+}
+
+func TestHTTPErrorHandling(t *testing.T) {
+	for _, scenario := range []struct {
+		name    string
+		profile bool
+		badPath string
+		body    string
+		want    error
+	}{
+		{"token rejection", false, "/sns/oauth2/access_token", `{"errcode":40163,"errmsg":"secret text"}`, goauth.ErrInvalidCredential},
+		{"success body on failed status", false, "/sns/oauth2/access_token", `{"access_token":"token","openid":"person","expires_in":7200}`, goauth.ErrTransport},
+		{"malformed rejection", false, "/sns/oauth2/access_token", `not JSON: secret`, goauth.ErrTransport},
+		{"profile rejection", true, "/sns/userinfo", `{"errcode":40163,"errmsg":"secret text"}`, goauth.ErrInvalidCredential},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			calls := 0
+			client := testutil.Client(t, func(writer http.ResponseWriter, request *http.Request) {
+				calls++
+				if request.URL.Path == scenario.badPath {
+					writer.WriteHeader(http.StatusUnauthorized)
+					fmt.Fprint(writer, scenario.body)
+					return
+				}
+				fmt.Fprint(writer, `{"access_token":"token","openid":"person","expires_in":7200}`)
+			})
+			provider, err := New(Config{AppID: "app", AppSecret: "secret", FetchProfile: scenario.profile, HTTPClient: client})
+			if err != nil {
+				t.Fatal(err)
+			}
+			user, err := provider.Exchange(context.Background(), "code")
+			expected := 1
+			if scenario.profile {
+				expected = 2
+			}
+			if !errors.Is(err, scenario.want) || !reflect.DeepEqual(user, goauth.User{}) || calls != expected {
+				t.Fatalf("user=%+v error=%v calls=%d", user, err, calls)
+			}
+			if strings.Contains(err.Error(), "secret") {
+				t.Fatalf("error leaks response: %v", err)
+			}
+		})
 	}
 }
 

@@ -35,11 +35,11 @@ func (provider *Provider) call(ctx context.Context, operation, method string, va
 	}
 	values.Set("sign", base64.StdEncoding.EncodeToString(signature))
 	data, err := provider.http.Do(ctx, operation, http.MethodPost, "https://openapi.alipay.com/gateway.do", values)
-	if err != nil {
-		return err
-	}
-	envelope, err := decodeEnvelope(data)
-	if err != nil {
+	envelope, envelopeErr := decodeEnvelope(data)
+	if envelopeErr != nil {
+		if err != nil {
+			return err
+		}
 		return httpx.Failure(goauth.Alipay, operation, goauth.ErrResponse)
 	}
 	payload, present := envelope[strings.ReplaceAll(method, ".", "_")+"_response"]
@@ -76,8 +76,8 @@ func (provider *Provider) call(ctx context.Context, operation, method string, va
 			return httpx.Failure(goauth.Alipay, operation, goauth.ErrSignature)
 		}
 	}
-	decoded, err := base64.StdEncoding.DecodeString(sign)
-	if err != nil {
+	decoded, decodeErr := base64.StdEncoding.DecodeString(sign)
+	if decodeErr != nil {
 		return httpx.Failure(goauth.Alipay, operation, goauth.ErrSignature)
 	}
 	responseDigest := sha256.Sum256(payload)
@@ -90,7 +90,7 @@ func (provider *Provider) call(ctx context.Context, operation, method string, va
 	if json.Unmarshal(payload, target) != nil {
 		return httpx.Failure(goauth.Alipay, operation, goauth.ErrResponse)
 	}
-	return nil
+	return err
 }
 
 func decodeEnvelope(data []byte) (map[string]json.RawMessage, error) {

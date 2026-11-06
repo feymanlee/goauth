@@ -14,7 +14,10 @@ type Config struct {
 	AppID        string
 	AppSecret    string
 	FetchProfile bool
-	HTTPClient   *http.Client
+	// HTTPClient supplies the client used for platform requests. A
+	// non-positive timeout falls back to 10s per request and the redirect
+	// policy is always replaced: token endpoints must not follow redirects.
+	HTTPClient *http.Client
 }
 
 type Provider struct {
@@ -52,11 +55,11 @@ func (provider *Provider) Exchange(ctx context.Context, code string) (goauth.Use
 		"appid": {provider.appID}, "secret": {provider.appSecret},
 		"code": {code}, "grant_type": {"authorization_code"},
 	}, httpx.Capture(&token, &tokenResponse))
-	if err != nil {
-		return goauth.User{}, err
-	}
 	if token.ErrCode != 0 {
 		return goauth.User{}, rejected("exchange", token.ErrCode)
+	}
+	if err != nil {
+		return goauth.User{}, err
 	}
 	if !httpx.Present(token.AccessToken, token.OpenID) || token.ExpiresIn <= 0 {
 		return goauth.User{}, httpx.Failure(goauth.WeChat, "exchange", goauth.ErrResponse)
@@ -86,11 +89,11 @@ func (provider *Provider) profile(ctx context.Context, accessToken string, user 
 	err := provider.http.JSON(ctx, "profile", http.MethodGet, "https://api.weixin.qq.com/sns/userinfo", url.Values{
 		"access_token": {accessToken}, "openid": {user.ID}, "lang": {"zh_CN"},
 	}, httpx.Capture(&profile, &raw))
-	if err != nil {
-		return err
-	}
 	if profile.ErrCode != 0 {
 		return rejected("profile", profile.ErrCode)
+	}
+	if err != nil {
+		return err
 	}
 	if !httpx.Present(profile.OpenID) {
 		return httpx.Failure(goauth.WeChat, "profile", goauth.ErrResponse)

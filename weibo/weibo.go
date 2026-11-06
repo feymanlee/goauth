@@ -13,7 +13,10 @@ import (
 type Config struct {
 	AppKey       string
 	FetchProfile bool
-	HTTPClient   *http.Client
+	// HTTPClient supplies the client used for platform requests. A
+	// non-positive timeout falls back to 10s per request and the redirect
+	// policy is always replaced: token endpoints must not follow redirects.
+	HTTPClient *http.Client
 }
 
 type Provider struct {

@@ -64,7 +64,9 @@ func Present(values ...string) bool {
 func (client *Client) Do(ctx context.Context, operation, method, endpoint string, values url.Values) ([]byte, error) {
 	var body io.Reader
 	if method == http.MethodGet {
-		endpoint += "?" + values.Encode()
+		if encoded := values.Encode(); encoded != "" {
+			endpoint += "?" + encoded
+		}
 	} else {
 		body = strings.NewReader(values.Encode())
 	}
@@ -113,11 +115,18 @@ func (client *Client) request(ctx context.Context, operation, method, endpoint, 
 	return data, statusError
 }
 
+// JSON issues a form request and decodes the response body into target. A JSON
+// object body is decoded into target even for a failing HTTP status: callers
+// must inspect the platform error fields in target before the returned error,
+// so provider rejections keep their classified kind instead of degrading to
+// ErrTransport.
 func (client *Client) JSON(ctx context.Context, operation, method, endpoint string, values url.Values, target any) error {
 	data, err := client.Do(ctx, operation, method, endpoint, values)
 	return client.decode(operation, data, err, target)
 }
 
+// PostJSON issues a JSON request and decodes the response body into target
+// under the same decoding contract as JSON.
 func (client *Client) PostJSON(ctx context.Context, operation, endpoint string, payload, target any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -128,7 +137,8 @@ func (client *Client) PostJSON(ctx context.Context, operation, endpoint string, 
 }
 
 func (client *Client) decode(operation string, data []byte, requestError error, target any) error {
-	if !strings.HasPrefix(strings.TrimSpace(string(data)), "{") || json.Unmarshal(data, target) != nil {
+	trimmed := bytes.TrimLeft(data, " \t\r\n")
+	if len(trimmed) == 0 || trimmed[0] != '{' || json.Unmarshal(data, target) != nil {
 		if requestError != nil {
 			return requestError
 		}

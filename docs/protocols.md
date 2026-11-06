@@ -2,6 +2,8 @@
 
 核实日期：2026-11-06。接口行为依据官方文档与官方 SDK；本项目自动化测试通过本地模拟服务验证协议实现，不代表已使用真实应用凭据完成生产联调。
 
+错误处理遵循统一优先级：HTTP 非成功状态的正文若能解码出平台错误码，按平台错误分类（只保留安全错误码，不传播可能含凭据的平台错误描述）；无法解析为平台错误时才按 HTTP 传输错误处理。正文为 JSON 对象时即使状态失败也先解码供错误码判定。
+
 ## 微信 App
 
 来源：[微信登录授权后接口调用](https://developers.weixin.qq.com/doc/oplatform/Mobile_App/WeChat_Login/Authorized_API_call_UnionID.html)。

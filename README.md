@@ -106,6 +106,18 @@ QQ、微博的服务端流程只接收并验证 SDK 令牌，没有取得客户�
 
 两张 map 每次调用独立创建。原始 JSON 中的数字以 `json.Number` 保存，重新序列化仍为 JSON 数字，并保留大整数精度；这与规范化的字符串 `User.ID` 区分开来。
 
+### 令牌有效期
+
+各平台都在验证时校验令牌或授权结果的有效期为正数，但有效期的返回形状不同；按 [通用 User 与原始响应](docs/adr/0003-user-and-provider-responses.md) 的决策，`User` 不另设规范化字段，接入方按下表从 `TokenResponse` 读取：
+
+| 平台 | 有效期读取方式 |
+| --- | --- |
+| 微信 | `user.TokenResponse["expires_in"]`，JSON 数字（`json.Number`） |
+| 抖音 | `user.TokenResponse["expires_in"]`，`TokenResponse` 已是换码响应的 `data` 对象 |
+| 支付宝 | `user.TokenResponse["expires_in"]`，字符串秒数 |
+| QQ | 验证接口不返回有效期，如需判断请另行调用平台接口 |
+| 微博 | 验证时已要求剩余秒数 `expire_in > 0`，过期令牌直接返回 `ErrInvalidCredential`；该值不保留在结果中 |
+
 当前平台通常不提供邮箱。微博 `name` 映射到 `Name`；支付宝仅在已有权限且响应实际包含 `user_name`、`email` 时映射它们。姓名字段不等同于实名认证结论，邮箱字段也不表示邮箱已验证。
 
 ### 可选用户资料

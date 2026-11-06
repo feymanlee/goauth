@@ -170,6 +170,42 @@ func TestResponseValidation(t *testing.T) {
 	}
 }
 
+func TestHTTPErrorHandling(t *testing.T) {
+	config, _, gateway := keys(t)
+	root := "alipay_system_oauth_token_response"
+	payload := `{"access_token":"token","expires_in":"7200","open_id":"person"}`
+	valid := signed(t, gateway, root, payload)
+	for _, scenario := range []struct {
+		name   string
+		status int
+		body   string
+		want   error
+	}{
+		{"rejection status", 400, `{"error_response":{"code":"40004","sub_msg":"secret token"}}`, goauth.ErrProvider},
+		{"signed success on failed status", 500, valid, goauth.ErrTransport},
+		{"malformed rejection", 400, `not JSON: secret`, goauth.ErrTransport},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			current := config
+			current.HTTPClient = testutil.Client(t, func(writer http.ResponseWriter, request *http.Request) {
+				writer.WriteHeader(scenario.status)
+				fmt.Fprint(writer, scenario.body)
+			})
+			provider, err := New(current)
+			if err != nil {
+				t.Fatal(err)
+			}
+			user, err := provider.Exchange(context.Background(), "code")
+			if !errors.Is(err, scenario.want) || !reflect.DeepEqual(user, goauth.User{}) {
+				t.Fatalf("user=%+v error=%v", user, err)
+			}
+			if strings.Contains(err.Error(), "secret token") {
+				t.Fatalf("platform message leaked: %v", err)
+			}
+		})
+	}
+}
+
 func TestLegacyIdentityAndProfileMismatch(t *testing.T) {
 	config, _, gateway := keys(t)
 	config.SubjectType = goauth.UserID

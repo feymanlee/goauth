@@ -13,7 +13,10 @@ import (
 type Config struct {
 	AppID        string
 	FetchProfile bool
-	HTTPClient   *http.Client
+	// HTTPClient supplies the client used for platform requests. A
+	// non-positive timeout falls back to 10s per request and the redirect
+	// policy is always replaced: token endpoints must not follow redirects.
+	HTTPClient *http.Client
 }
 
 type Provider struct {
@@ -47,9 +50,6 @@ func (provider *Provider) Verify(ctx context.Context, accessToken string) (goaut
 	err := provider.http.JSON(ctx, "verify", http.MethodGet, "https://graph.qq.com/oauth2.0/me", url.Values{
 		"access_token": {accessToken}, "fmt": {"json"},
 	}, &result)
-	if err != nil {
-		return goauth.User{}, err
-	}
 	if result.Error != 0 {
 		failure := httpx.Rejected(goauth.QQ, "verify", strconv.FormatInt(result.Error, 10))
 		switch result.Error {
@@ -57,6 +57,9 @@ func (provider *Provider) Verify(ctx context.Context, accessToken string) (goaut
 			failure.Kind = goauth.ErrInvalidCredential
 		}
 		return goauth.User{}, failure
+	}
+	if err != nil {
+		return goauth.User{}, err
 	}
 	if !httpx.Present(string(result.AppID), result.OpenID) {
 		return goauth.User{}, httpx.Failure(goauth.QQ, "verify", goauth.ErrResponse)
@@ -89,14 +92,14 @@ func (provider *Provider) profile(ctx context.Context, accessToken string, user 
 		"access_token": {accessToken}, "oauth_consumer_key": {provider.appID},
 		"openid": {user.ID}, "format": {"json"},
 	}, httpx.Capture(&profile, &raw))
+	if profile.Ret != nil && *profile.Ret != 0 {
+		return httpx.Rejected(goauth.QQ, "profile", strconv.FormatInt(*profile.Ret, 10))
+	}
 	if err != nil {
 		return err
 	}
 	if profile.Ret == nil {
 		return httpx.Failure(goauth.QQ, "profile", goauth.ErrResponse)
-	}
-	if *profile.Ret != 0 {
-		return httpx.Rejected(goauth.QQ, "profile", strconv.FormatInt(*profile.Ret, 10))
 	}
 	if profile.AvatarURL == "" {
 		profile.AvatarURL = profile.Avatar
