@@ -25,14 +25,13 @@ func TestExchange(t *testing.T) {
 		}
 		switch request.URL.Path {
 		case "/oauth/access_token/":
-			if request.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
-				t.Error("token exchange requires form encoding")
+			if request.Header.Get("Content-Type") != "application/json" {
+				t.Error("token exchange requires JSON encoding")
 			}
-			if err := request.ParseForm(); err != nil {
-				t.Error(err)
-			}
-			if request.PostForm.Get("client_key") != "app" || request.PostForm.Get("client_secret") != "secret" ||
-				request.PostForm.Get("code") != "code+ /" || request.PostForm.Get("grant_type") != "authorization_code" {
+			var body map[string]string
+			if json.NewDecoder(request.Body).Decode(&body) != nil ||
+				body["client_key"] != "app" || body["client_secret"] != "secret" ||
+				body["code"] != "code+ /" || body["grant_type"] != "authorization_code" {
 				t.Error("incorrect exchange parameters")
 			}
 			fmt.Fprint(writer, validToken)

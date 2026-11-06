@@ -3,7 +3,6 @@ package douyin
 import (
 	"context"
 	"net/http"
-	"net/url"
 	"strconv"
 
 	"github.com/feymanlee/goauth"
@@ -52,9 +51,9 @@ func (provider *Provider) Exchange(ctx context.Context, code string) (goauth.Use
 		} `json:"data"`
 	}
 	var tokenResponse map[string]any
-	err := provider.http.JSON(ctx, "exchange", http.MethodPost, "https://open.douyin.com/oauth/access_token/", url.Values{
-		"client_key": {provider.clientKey}, "client_secret": {provider.clientSecret},
-		"code": {code}, "grant_type": {"authorization_code"},
+	err := provider.http.PostJSON(ctx, "exchange", "https://open.douyin.com/oauth/access_token/", map[string]string{
+		"client_key": provider.clientKey, "client_secret": provider.clientSecret,
+		"code": code, "grant_type": "authorization_code",
 	}, httpx.Capture(&response, &tokenResponse))
 	if response.Data != nil && response.Data.ErrorCode != nil {
 		if code := *response.Data.ErrorCode; code != 0 {

@@ -26,7 +26,7 @@
 
 来源：[移动 SDK 获取授权令牌](https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/sdk/mobile-app/permission/get-permission-token)、[换取访问令牌](https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/openapi/account-permission/get-access-token)、[获取公开资料](https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/openapi/account-permission/get-account-open-info)、[官方 Go SDK 固定版本](https://github.com/bytedance/douyin-openapi-sdk-go/blob/a50593c5ccdc31ab5b7cb2153947dfad612bbed9/client/client.go)。
 
-- `POST https://open.douyin.com/oauth/access_token/` 使用表单编码：`client_key`、`client_secret`、`code`、`grant_type=authorization_code`。
+- `POST https://open.douyin.com/oauth/access_token/` 使用 JSON 正文：`client_key`、`client_secret`、`code`、`grant_type=authorization_code`。文档历史 curl 示例使用表单，现行示例为 JSON；本库与 userinfo 接口一致采用 JSON 形态。
 - 换码字段位于 `data` 中，要求显式的 `error_code=0`、有效访问令牌、OpenID 及有效期。
 - `POST https://open.douyin.com/oauth/userinfo/` 使用 JSON 正文包含 `access_token`、`open_id`，依据当前文档参数表及官方 SDK。文档中的旧 curl 示例仍使用表单，本库采用现行 JSON 形态。
 - 资料接口要求顶层 `err_no=0`；内层 `error_code` 若存在也必须为零，兼容字符串和数字。不能要求内外错误码数值相同。
