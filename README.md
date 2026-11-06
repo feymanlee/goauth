@@ -1,8 +1,15 @@
 # goauth
 
-用于原生 App 第三方登录的 Go 服务端认证库。参考 `picapica/pkg/socialite` 的职责划分重新实现，保留平台适配、统一身份和多应用实例的设计，不依赖其代码。
+[![Version](https://img.shields.io/github/v/tag/feymanlee/goauth?label=version)](https://github.com/feymanlee/goauth/tags)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/feymanlee/goauth)](https://github.com/feymanlee/goauth/blob/main/go.mod)
+[![Go Reference](https://pkg.go.dev/badge/github.com/feymanlee/goauth.svg)](https://pkg.go.dev/github.com/feymanlee/goauth)
+[![Standard Library Only](https://img.shields.io/badge/dependencies-standard_library_only-blue)](https://github.com/feymanlee/goauth/blob/main/go.mod)
 
-**Go 1.22+，仅使用标准库。** 不绑定 Web 框架、数据库或 JWT 实现。
+支持 **微信、QQ、抖音、微博、支付宝** 原生 App 登录的 Go 服务端认证库。验证客户端 SDK 返回的授权凭据，将不同平台的身份和资料统一为 `User`。
+
+**Go 1.22+，仅使用标准库。** 支持同平台多应用配置、可选用户资料、原始响应及令牌信息，提供 `context` 取消与 HTTP 客户端注入。账号绑定和登录态由接入方管理，不绑定 Web 框架、数据库或 JWT 实现。
+
+参考 `picapica/pkg/socialite` 的职责划分重新设计与实现，保留平台适配、统一身份和多应用实例的架构，不依赖其代码。
 
 ## 支持范围
 
@@ -20,7 +27,13 @@
 
 ## 快速接入
 
-在当前仓库可直接运行 `go test ./...`。接入其他项目时，发布到远端后使用 `go get github.com/feymanlee/goauth`；发布前可在接入项目的 `go.mod` 中通过 `replace` 指向本地检出目录。
+安装已发布版本：
+
+```sh
+go get github.com/feymanlee/goauth@v0.1.0
+```
+
+在当前仓库可直接运行 `go test ./...`；本地联调可在接入项目的 `go.mod` 中通过 `replace` 指向本地检出目录。
 
 ```go
 provider, err := wechat.New(wechat.Config{
