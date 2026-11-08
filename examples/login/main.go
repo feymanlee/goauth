@@ -12,13 +12,16 @@ import (
 	"github.com/feymanlee/goauth"
 	"github.com/feymanlee/goauth/alipay"
 	"github.com/feymanlee/goauth/douyin"
+	"github.com/feymanlee/goauth/facebook"
+	"github.com/feymanlee/goauth/github"
+	"github.com/feymanlee/goauth/google"
 	"github.com/feymanlee/goauth/qq"
 	"github.com/feymanlee/goauth/wechat"
 	"github.com/feymanlee/goauth/weibo"
 )
 
 func main() {
-	platform := flag.String("provider", "wechat", "wechat, qq, douyin, weibo, alipay")
+	platform := flag.String("provider", "wechat", "wechat, qq, douyin, weibo, alipay, github, google, facebook")
 	profile := flag.Bool("profile", false, "fetch authorized profile")
 	subjectType := flag.String("alipay-subject", string(goauth.OpenID), "open_id or user_id")
 	flag.Parse()
@@ -64,6 +67,12 @@ func authenticate(ctx context.Context, platform string, profile bool, subjectTyp
 			AppID: appID, PrivateKeyPEM: string(privateKey), AlipayPublicKeyPEM: string(publicKey),
 			SubjectType: subjectType, FetchProfile: profile,
 		})
+	case "github":
+		exchanger, err = github.New(github.Config{ClientID: appID, ClientSecret: secret, FetchProfile: profile})
+	case "google":
+		verifier, err = google.New(google.Config{ClientID: appID})
+	case "facebook":
+		verifier, err = facebook.New(facebook.Config{AppID: appID, AppSecret: secret, FetchProfile: profile})
 	default:
 		return goauth.User{}, errors.New("unsupported provider")
 	}

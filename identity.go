@@ -5,11 +5,14 @@ import "context"
 type Provider string
 
 const (
-	WeChat Provider = "wechat"
-	QQ     Provider = "qq"
-	Douyin Provider = "douyin"
-	Weibo  Provider = "weibo"
-	Alipay Provider = "alipay"
+	WeChat   Provider = "wechat"
+	QQ       Provider = "qq"
+	Douyin   Provider = "douyin"
+	Weibo    Provider = "weibo"
+	Alipay   Provider = "alipay"
+	GitHub   Provider = "github"
+	Google   Provider = "google"
+	Facebook Provider = "facebook"
 )
 
 type SubjectType string

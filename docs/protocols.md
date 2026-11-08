@@ -1,6 +1,6 @@
 # 协议来源与兼容范围
 
-核实日期：2026-11-06。接口行为依据官方文档与官方 SDK；本项目自动化测试通过本地模拟服务验证协议实现，不代表已使用真实应用凭据完成生产联调。
+核实日期：2026-11-07。接口行为依据官方文档与官方 SDK；本项目自动化测试通过本地模拟服务验证协议实现，不代表已使用真实应用凭据完成生产联调。
 
 错误处理遵循统一优先级：HTTP 非成功状态的正文若能解码出平台错误码，按平台错误分类（只保留安全错误码，不传播可能含凭据的平台错误描述）；无法解析为平台错误时才按 HTTP 传输错误处理。正文为 JSON 对象时即使状态失败也先解码供错误码判定。
 
@@ -56,3 +56,29 @@
 - 使用 `json.RawMessage` 保存并验证业务子对象原始字节，不重新序列化、不执行转义斜杠的兼容回退。
 - 默认要求应用级 `open_id`；存量 `user_id` 模式需显式配置，避免静默改变身份键。
 - 首版支持 RSA2 公钥模式、有限期用户 token；证书模式、V3、令牌刷新与服务商代调用不在实现范围内。
+
+## GitHub App
+
+来源：[授权 OAuth App](https://docs.github.com/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps/)、[令牌请求错误排错](https://docs.github.com/apps/managing-oauth-apps/troubleshooting-oauth-app-access-token-request-errors/)、[获取已认证用户](https://docs.github.com/rest/users/users#get-the-authenticated-user)、[用户邮箱](https://docs.github.com/rest/users/emails#list-email-address-for-the-authenticated-user)。
+
+- `POST https://github.com/login/oauth/access_token` 使用表单 `client_id`、`client_secret`、`code`，必须携带 `Accept: application/json` 才返回 JSON。不传 `redirect_uri`，网页回调流不在首版范围。
+- 换码失败以 HTTP 200 携带 `error` 字段返回，`bad_verification_code` 表示无效或已使用的授权码；`incorrect_client_credentials`、`redirect_uri_mismatch` 归为配置错误。OAuth App 令牌不过期，GitHub App 令牌才可能携带 `expires_in`，因此不强制要求该字段。
+- 换码响应不含用户身份，必须以 Bearer 令牌请求 `GET https://api.github.com/user` 取数字 `id` 作为主体标识；该接口错误仅含 `message`，无稳定错误码，按 HTTP 状态处理。
+- `FetchProfile` 额外请求 `GET /user/emails`（返回 JSON 数组），仅采纳同时 `primary` 且 `verified` 的邮箱；未启用时 `email` 取 `/user` 的公开邮箱（通常为空）。
+
+## Google App
+
+来源：[OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect)、[后端服务器身份验证](https://developers.google.com/identity/sign-in/android/backend-auth)、[JWKS 端点](https://www.googleapis.com/oauth2/v3/certs)。
+
+- 原生 App 使用 Google Play Services 返回的 **ID 令牌**（`id_token`），由后端本地验证，无需 client secret；授权码交换流不在首版范围。
+- 从 `https://www.googleapis.com/oauth2/v3/certs` 获取 JWK，按 `kid` 匹配并要求 `RS256`；每次验证重新获取，不缓存。签名算法不是 RS256、`kid` 无法匹配或验签失败均按签名错误处理。
+- 校验 `iss` 为 `https://accounts.google.com` 或旧值 `accounts.google.com`；`aud` 必须等于配置的 ClientID（不匹配视为应用归属不一致）；`exp` 必须存在且晚于当前时间（过期视为无效凭据）；`sub` 必须存在且非空。
+- 令牌载荷即为原始资料：`sub` 是主体标识，`name`／`picture` 平铺进资料字段；仅当 `email_verified` 为真才映射 `email`。`TokenResponse` 保留输入 `id_token` 本身。
+
+## Facebook App
+
+来源：[Debug Token](https://developers.facebook.com/docs/graph-api/reference/debug_token)、[访问令牌调试](https://developers.facebook.com/docs/facebook-login/guides/access-tokens/debugging)、[Graph API 版本](https://developers.facebook.com/docs/graph-api/guides/versioning)。
+
+- 使用固定 Graph API 版本 `v27.0`；`GET /v27.0/debug_token` 以 `input_token` 传入 SDK 令牌、以 `app_id|app_secret` 作为应用访问令牌鉴权，两者必须属于同一应用。
+- 要求 `data.is_valid` 为真；`data.app_id` 必须匹配配置的 AppID；`data.user_id` 作为主体标识；`data.expires_at` 若存在必须晚于当前时间。错误响应形如 `{"error":{"code":190,...}}`，190 归为无效凭据。
+- `FetchProfile` 以已验证令牌请求 `GET /v27.0/me?fields=id,name,email,picture.type(large)`，并核对返回 `id` 与 `user_id` 一致；`email` 需要用户授权 email 权限，未授权时为空。

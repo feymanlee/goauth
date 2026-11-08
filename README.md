@@ -5,7 +5,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/feymanlee/goauth.svg)](https://pkg.go.dev/github.com/feymanlee/goauth)
 [![Standard Library Only](https://img.shields.io/badge/dependencies-standard_library_only-blue)](https://github.com/feymanlee/goauth/blob/main/go.mod)
 
-支持 **微信、QQ、抖音、微博、支付宝** 原生 App 登录的 Go 服务端认证库。验证客户端 SDK 返回的授权凭据，将不同平台的身份和资料统一为 `User`。
+支持 **微信、QQ、抖音、微博、支付宝、GitHub、Google、Facebook** 原生 App 登录的 Go 服务端认证库。验证客户端 SDK 返回的授权凭据，将不同平台的身份和资料统一为 `User`。
 
 **Go 1.22+，仅使用标准库。** 支持同平台多应用配置、可选用户资料、原始响应及令牌信息，提供 `context` 取消与 HTTP 客户端注入。账号绑定和登录态由接入方管理，不绑定 Web 框架、数据库或 JWT 实现。
 
@@ -22,6 +22,9 @@
 | 抖音 App | `douyin.Provider.Exchange` | SDK 返回的授权码 `code` | 使用配置的 ClientKey / ClientSecret 换码，取 `data.open_id` |
 | 微博 App | `weibo.Provider.Verify` | SDK 返回的 `access_token` | token info 的 `appkey` 必须匹配 App Key，验证剩余有效期，取 UID |
 | 支付宝 App | `alipay.Provider.Exchange` | SDK 返回的 `auth_code` | RSA2 请求签名、支付宝公钥响应验签，取配置类型的身份标识 |
+| GitHub App | `github.Provider.Exchange` | OAuth 授权 `code` | 使用 Client ID / Client Secret 换码，Bearer 令牌请求 `/user` 取数字 ID |
+| Google App | `google.Provider.Verify` | Google Play Services 返回的 `id_token` | 本地 JWKS 验签 RS256，校验 `iss`／`aud`（ClientID）／`exp`，取 `sub` |
+| Facebook App | `facebook.Provider.Verify` | SDK 返回的 `access_token` | `debug_token` 以应用密钥校验归属与有效期，取 `user_id` |
 
 这些入口用于原生 App，不能混入小程序登录 code、应用级 token 或裸 OpenID。客户端报来的用户 ID 不作为认证依据。客户端 SDK 初始化、授权参数准备与登录事务管理由接入方完成。
 
@@ -73,6 +76,15 @@ alipayProvider, err := alipay.New(alipay.Config{
     PrivateKeyPEM:      applicationPrivateKeyPEM,
     AlipayPublicKeyPEM: alipayPublicKeyPEM,
 })
+githubProvider, err := github.New(github.Config{
+    ClientID: clientID, ClientSecret: clientSecret,
+})
+googleProvider, err := google.New(google.Config{
+    ClientID: clientID,
+})
+facebookProvider, err := facebook.New(facebook.Config{
+    AppID: appID, AppSecret: appSecret,
+})
 ```
 
 上面的构造语句是独立示意；每次调用都应处理返回的 `err`。所有构造函数返回的实例可重复、并发使用。同平台多应用分别创建实例；实例不会存储用户凭据或认证结果。
@@ -99,7 +111,7 @@ type User struct {
 
 `User.Key()` 返回可比较的 `IdentityKey`，包含 **平台、应用、标识类型、主体标识** 四个字段。数据库可对四者建立联合唯一约束；不要把裸 `ID`、昵称或头像作为跨平台账号主键。只需要身份时，`user.Identity()` 返回不含用户资料及令牌的 `Identity`，其中 `Subject` 对应 `user.ID`。
 
-微信、QQ、抖音使用 `goauth.OpenID`；微博使用 `goauth.UserID`。支付宝默认要求 `open_id`；存量应用若配置为 `user_id` 模式，构造时显式设置 `SubjectType: goauth.UserID`。缺少所选类型时返回错误，不自动切换身份类型，以免应用升级时悄悄改变账号键。
+微信、QQ、抖音使用 `goauth.OpenID`；微博、GitHub、Google、Facebook 使用 `goauth.UserID`。支付宝默认要求 `open_id`；存量应用若配置为 `user_id` 模式，构造时显式设置 `SubjectType: goauth.UserID`。缺少所选类型时返回错误，不自动切换身份类型，以免应用升级时悄悄改变账号键。
 
 `UnionID` 只在平台实际返回时填写。它的范围由平台和开发者账号／应用分组决定，不代表全局用户 ID，也不自动触发账号合并。QQ 基础 `/me` 流程不申请额外的 UnionID 权限，因此通常没有此字段；抖音通常需获取资料才能得到它。
 
@@ -114,6 +126,9 @@ type User struct {
 | 抖音 | 资料响应的 `data` 对象 | 换码响应的 `data` 对象 |
 | 微博 | `/2/users/show.json` 响应 | `{"access_token": 已验证的输入令牌}` |
 | 支付宝 | 验签后的资料业务对象 | 验签后的 token 业务对象 |
+| GitHub | `/user` 响应 | 换码接口完整 JSON 对象 |
+| Google | ID 令牌载荷（原始声明） | `{"id_token": 已验证的输入令牌}` |
+| Facebook | `/me` 响应 | `{"access_token": 已验证的输入令牌}` |
 
 QQ、微博的服务端流程只接收并验证 SDK 令牌，没有取得客户端换码响应，因此不伪造 `token_type`、`scope` 或刷新令牌。抖音去掉外层协议封装，支付宝去掉外层响应键和签名字段；两者都可直接通过 `user.TokenResponse["access_token"]` 访问令牌。
 
@@ -121,13 +136,16 @@ QQ、微博的服务端流程只接收并验证 SDK 令牌，没有取得客户�
 
 ### 令牌有效期
 
-各平台都在验证时校验令牌或授权结果的有效期为正数，但有效期的返回形状不同；按 [通用 User 与原始响应](docs/adr/0003-user-and-provider-responses.md) 的决策，`User` 不另设规范化字段，接入方按下表从 `TokenResponse` 读取：
+各平台都在验证时校验令牌或授权结果的有效期为正数，但有效期的返回形状不同；按 [通用 User 与原始响应](docs/adr/0003-user-and-provider-responses.md) 的决策，`User` 不另设规范化字段，接入方按下表读取：
 
 | 平台 | 有效期读取方式 |
 | --- | --- |
 | 微信 | `user.TokenResponse["expires_in"]`，JSON 数字（`json.Number`） |
 | 抖音 | `user.TokenResponse["expires_in"]`，`TokenResponse` 已是换码响应的 `data` 对象 |
 | 支付宝 | `user.TokenResponse["expires_in"]`，字符串秒数 |
+| GitHub | OAuth App 令牌不过期；GitHub App 令牌若返回则读 `user.TokenResponse["expires_in"]` |
+| Google | 验证时已要求 `exp` 晚于当前时间，过期令牌直接返回 `ErrInvalidCredential`；原始 `exp` 保留在 `user.Raw`（`json.Number`） |
+| Facebook | 验证时已要求 `expires_at` 晚于当前时间，过期令牌直接返回 `ErrInvalidCredential`；该值不保留在结果中 |
 | QQ | 验证接口不返回有效期，如需判断请另行调用平台接口 |
 | 微博 | 验证时已要求剩余秒数 `expire_in > 0`，过期令牌直接返回 `ErrInvalidCredential`；该值不保留在结果中 |
 
@@ -153,7 +171,7 @@ type TokenVerifier interface {
 }
 ```
 
-微信、抖音、支付宝实现 `CodeExchanger`；QQ、微博实现 `TokenVerifier`。新增平台可以实现其中一个或两个接口，无需修改核心包或注册中心。具体方法只提供已实现的能力。
+微信、抖音、支付宝、GitHub 实现 `CodeExchanger`；QQ、微博、Google、Facebook 实现 `TokenVerifier`。新增平台可以实现其中一个或两个接口，无需修改核心包或注册中心。具体方法只提供已实现的能力。
 
 ### 支付宝密钥
 
@@ -192,7 +210,7 @@ if errors.As(err, &failure) {
 | `ErrInvalidCredential` | 空凭据或已识别的失效、过期凭据 |
 | `ErrProvider` | 平台拒绝请求，保留受限长度和字符集的错误码 |
 | `ErrIdentityMismatch` | 平台返回的应用或用户身份不一致 |
-| `ErrSignature` | 支付宝响应缺失签名或验签失败 |
+| `ErrSignature` | 支付宝响应缺失签名或验签失败，或 Google ID 令牌签名无效 |
 | `ErrResponse` | 非预期 JSON、缺少必要字段、响应过大等 |
 | `ErrTransport` | 网络错误、重定向或未解析为平台错误的 HTTP 非成功状态 |
 
@@ -202,13 +220,13 @@ if errors.As(err, &failure) {
 
 ## 可运行示例与测试
 
-`examples/login` 提供五个平台共用的命令行示例，从环境变量读取参数：
+`examples/login` 提供八个平台共用的命令行示例，从环境变量读取参数：
 
 | 环境变量 | 用途 |
 | --- | --- |
-| `GOAUTH_APP_ID` | 当前平台的 AppID、ClientKey 或 App Key |
-| `GOAUTH_APP_SECRET` | 微信 AppSecret 或抖音 ClientSecret |
-| `GOAUTH_CREDENTIAL` | 当前 SDK 返回的 code 或 access token |
+| `GOAUTH_APP_ID` | 当前平台的 AppID、ClientKey、Client ID 或 App Key |
+| `GOAUTH_APP_SECRET` | 微信 AppSecret、抖音 ClientSecret、GitHub Client Secret 或 Facebook App Secret |
+| `GOAUTH_CREDENTIAL` | 当前 SDK 返回的 code、access token 或 id token |
 | `GOAUTH_ALIPAY_PRIVATE_KEY_FILE` | 支付宝应用私钥 PEM 文件路径 |
 | `GOAUTH_ALIPAY_PUBLIC_KEY_FILE` | 支付宝公钥 PEM 文件路径 |
 
@@ -220,6 +238,9 @@ go run ./examples/login -provider qq -profile
 go run ./examples/login -provider douyin
 go run ./examples/login -provider weibo
 go run ./examples/login -provider alipay -alipay-subject open_id
+go run ./examples/login -provider github -profile
+go run ./examples/login -provider google
+go run ./examples/login -provider facebook -profile
 ```
 
 示例会调用真实平台并可能消费一次性 code，输出完整 `User` JSON（包含令牌）；使用你为对应应用取得的凭据。添加 `-profile` 可同时输出通用资料与 `raw`。普通测试全部使用本地模拟 HTTP 服务，不请求真实平台：

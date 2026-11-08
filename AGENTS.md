@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-The root `goauth` package defines `User`, `Identity`, capability interfaces, and errors. Platform adapters live in `wechat/`, `qq/`, `douyin/`, `weibo/`, and `alipay/`. Shared HTTP handling belongs in `internal/httpx/`; test helpers belong in `internal/testutil/`. Tests sit beside source files as `*_test.go`. `examples/login/` contains the runnable CLI example.
+The root `goauth` package defines `User`, `Identity`, capability interfaces, and errors. Platform adapters live in `wechat/`, `qq/`, `douyin/`, `weibo/`, `alipay/`, `github/`, `google/`, and `facebook/`. Shared HTTP handling belongs in `internal/httpx/`; test helpers belong in `internal/testutil/`. Tests sit beside source files as `*_test.go`. `examples/login/` contains the runnable CLI example.
 
 Before changing platform protocols, consult `docs/protocols.md`. For domain terminology or architectural changes, consult `GLOSSARY.md`, `docs/design.md`, and `docs/adr/`, updating relevant documents alongside implementation.
 

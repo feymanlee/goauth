@@ -51,6 +51,30 @@ func TestResponseFailures(t *testing.T) {
 	}
 }
 
+func TestArrayResponseAndHeaders(t *testing.T) {
+	withHeader := testutil.Client(t, func(writer http.ResponseWriter, request *http.Request) {
+		if request.Header.Get("Authorization") != "Bearer token" {
+			t.Error("missing authorization header")
+		}
+		fmt.Fprint(writer, `[{"email":"person@example.com","primary":true}]`)
+	})
+	var entries []map[string]any
+	err := New(goauth.GitHub, withHeader).JSONWithHeaders(context.Background(), "email", http.MethodGet,
+		"https://api.github.com/user/emails", nil,
+		map[string]string{"Authorization": "Bearer token"}, &entries)
+	if err != nil || len(entries) != 1 || entries[0]["email"] != "person@example.com" {
+		t.Fatalf("entries=%+v error=%v", entries, err)
+	}
+	withoutHeader := testutil.Client(t, func(writer http.ResponseWriter, request *http.Request) {
+		fmt.Fprint(writer, `[{"email":"person@example.com"}]`)
+	})
+	var object map[string]any
+	if err := New(goauth.GitHub, withoutHeader).JSONWithHeaders(context.Background(), "email", http.MethodGet,
+		"https://api.github.com/user/emails", nil, nil, &object); !errors.Is(err, goauth.ErrResponse) {
+		t.Fatalf("array into object target: %v", err)
+	}
+}
+
 func TestCancellationAndTimeout(t *testing.T) {
 	for _, scenario := range []struct {
 		name    string

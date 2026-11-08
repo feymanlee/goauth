@@ -62,6 +62,18 @@ func Present(values ...string) bool {
 }
 
 func (client *Client) Do(ctx context.Context, operation, method, endpoint string, values url.Values) ([]byte, error) {
+	return client.do(ctx, operation, method, endpoint, values, nil)
+}
+
+// JSONWithHeaders issues a form request carrying extra headers, such as an
+// Authorization header, and decodes the response body into target under the
+// same decoding contract as JSON.
+func (client *Client) JSONWithHeaders(ctx context.Context, operation, method, endpoint string, values url.Values, headers map[string]string, target any) error {
+	data, err := client.do(ctx, operation, method, endpoint, values, headers)
+	return client.decode(operation, data, err, target)
+}
+
+func (client *Client) do(ctx context.Context, operation, method, endpoint string, values url.Values, headers map[string]string) ([]byte, error) {
 	var body io.Reader
 	if method == http.MethodGet {
 		if encoded := values.Encode(); encoded != "" {
@@ -70,10 +82,10 @@ func (client *Client) Do(ctx context.Context, operation, method, endpoint string
 	} else {
 		body = strings.NewReader(values.Encode())
 	}
-	return client.request(ctx, operation, method, endpoint, "application/x-www-form-urlencoded", body)
+	return client.request(ctx, operation, method, endpoint, "application/x-www-form-urlencoded", body, headers)
 }
 
-func (client *Client) request(ctx context.Context, operation, method, endpoint, contentType string, body io.Reader) ([]byte, error) {
+func (client *Client) request(ctx context.Context, operation, method, endpoint, contentType string, body io.Reader, headers map[string]string) ([]byte, error) {
 	request, err := http.NewRequestWithContext(ctx, method, endpoint, body)
 	if err != nil {
 		return nil, Failure(client.provider, operation, goauth.ErrInvalidConfig)
@@ -81,6 +93,9 @@ func (client *Client) request(ctx context.Context, operation, method, endpoint, 
 	request.Header.Set("Accept", "application/json")
 	if method != http.MethodGet {
 		request.Header.Set("Content-Type", contentType)
+	}
+	for name, value := range headers {
+		request.Header.Set(name, value)
 	}
 	response, err := client.client.Do(request)
 	if err != nil {
@@ -116,10 +131,10 @@ func (client *Client) request(ctx context.Context, operation, method, endpoint, 
 }
 
 // JSON issues a form request and decodes the response body into target. A JSON
-// object body is decoded into target even for a failing HTTP status: callers
-// must inspect the platform error fields in target before the returned error,
-// so provider rejections keep their classified kind instead of degrading to
-// ErrTransport.
+// object or array body is decoded into target even for a failing HTTP status:
+// callers must inspect the platform error fields in target before the returned
+// error, so provider rejections keep their classified kind instead of
+// degrading to ErrTransport.
 func (client *Client) JSON(ctx context.Context, operation, method, endpoint string, values url.Values, target any) error {
 	data, err := client.Do(ctx, operation, method, endpoint, values)
 	return client.decode(operation, data, err, target)
@@ -132,13 +147,13 @@ func (client *Client) PostJSON(ctx context.Context, operation, endpoint string, 
 	if err != nil {
 		return Failure(client.provider, operation, goauth.ErrInvalidConfig)
 	}
-	data, err := client.request(ctx, operation, http.MethodPost, endpoint, "application/json", bytes.NewReader(body))
+	data, err := client.request(ctx, operation, http.MethodPost, endpoint, "application/json", bytes.NewReader(body), nil)
 	return client.decode(operation, data, err, target)
 }
 
 func (client *Client) decode(operation string, data []byte, requestError error, target any) error {
 	trimmed := bytes.TrimLeft(data, " \t\r\n")
-	if len(trimmed) == 0 || trimmed[0] != '{' || json.Unmarshal(data, target) != nil {
+	if len(trimmed) == 0 || (trimmed[0] != '{' && trimmed[0] != '[') || json.Unmarshal(data, target) != nil {
 		if requestError != nil {
 			return requestError
 		}

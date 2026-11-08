@@ -15,6 +15,9 @@ goauth 是独立的 Go 第三方身份认证包，参考 picapica/socialite 的�
 | 抖音 | 原生 App 登录 |
 | 微博 | 原生 App 登录 |
 | 支付宝 | 原生 App 登录 |
+| GitHub | 原生 App 登录（OAuth 授权码） |
+| Google | 原生 App 登录（ID 令牌） |
+| Facebook | 原生 App 登录（访问令牌） |
 
 所有平台均由原生 App 的客户端 SDK 发起授权，客户端将获得的授权凭据交给业务后端，再由业务后端调用 goauth 完成第三方验证。第一版不负责浏览器授权跳转或 HTTP 回调路由。
 
